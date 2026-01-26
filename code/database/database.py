@@ -1,3 +1,4 @@
+import json
 import time
 
 class Database:
@@ -43,3 +44,31 @@ class Database:
     
     def _is_expired(self, key: str) -> bool:
         return key in self._expire and self._expire[key] < time.time()
+    
+    def save(self, filepath: str) -> None:
+        """save database to file"""
+        # Collect content
+        content = {}
+        for k, v in self._data.items():
+            content[k]= {"v": v}
+            if k in self._expire: content[k]["e"] = self._expire[k]
+        
+        # Save to file
+        with open(filepath, "w") as fp:
+            json.dump(content, fp)
+    
+    def load(self, filepath: str) -> None:
+        """load database from file (replace current data)"""
+        # Load JSON object from file
+        with open(filepath, "r") as fp:
+            json_obj = json.load(fp)
+
+        # Replace the data
+        data = {}
+        expire = {}
+        for key, content in json_obj.items():
+            data[key] = content["v"]
+            if "e" in content:
+                expire[key] = content["e"]
+        
+        self._data, self._expire = data, expire
