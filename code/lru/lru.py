@@ -1,3 +1,5 @@
+import json
+
 class Node():
     def __init__(self, key: int | None = None, val: int | None = None):
         self.key, self.val = key, val
@@ -57,3 +59,33 @@ class LRUCache():
 
     def size(self) -> int:
         return len(self._cache)
+    
+
+    def save(self, filepath: str) -> None:
+        json_obj = {"cache": [], "cap": self._cap}
+        node = self._head.next
+        while node != self._tail:
+            json_obj["cache"].append((node.key, node.val))
+            node = node.next
+
+        with open(filepath, "w") as fp:
+            json.dump(json_obj, fp)
+    
+    def load(self, filepath: str) -> None:
+        with open(filepath, "r") as fp:
+            json_obj = json.load(fp)
+        
+        cache = {}
+        head, tail = Node(), Node()
+        root = head
+        for key, val in json_obj["cache"]:
+            node = Node(key, val)
+            cache[key] = node
+            root.next, node.prev = node, root
+            root = root.next
+
+        root.next, tail.prev = tail, root
+        
+        self._cache = cache
+        self._head, self._tail = head, tail
+        self._cap = json_obj["cap"]
