@@ -38,3 +38,27 @@ class LRUCache():
 
     def _remove(self, node: Node):
         node.prev.next, node.next.prev = node.next, node.prev
+    
+    def keys(self) -> list[int]:
+        res = []
+        node = self._head.next
+        while node != self._tail:
+            res.append(node.key)
+            node = node.next
+        
+        return res
+    
+    def size(self) -> int:
+        return len(self._cache)
+    
+    def peek(self, key: int) -> int:
+        if key not in self._cache:
+            return -1
+        
+        return self._cache[key].value
+
+    def save(self, filepath: str) -> None:
+        pass
+    
+    def laod(self, filepath: str) -> None:
+        pass
