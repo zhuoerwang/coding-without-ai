@@ -3,19 +3,39 @@ import time
 from collections import defaultdict, deque
 
 class RateLimiter:
-    def __init__(self, max_requests: int, window_seconds: int, strategy: str = "fixed"):
+    def __init__(self, max_requests: int, window_seconds: int, strategy: str = "fixed",
+                 bucket_capacity: int | None = None, refill_rate: float | None = None):
         self._max_requests = max_requests
         self._window_seconds = window_seconds
         self._strategy = strategy
-        self._fixed_window = None # for fixed window strategy
-        self._counter = defaultdict(int) # for fixed window strategy
-        self._logs = defaultdict(deque) # for sliding window strategy
+        self._bucket_capacity = bucket_capacity
+        self._refill_rate = refill_rate
+        self._fixed_window = None # for fixed window
+        self._counter = defaultdict(int) # for fixed window
+        self._logs = defaultdict(deque) # for sliding window
+        self._buckets = {} # for token bucket
    
     def allow(self, client_id: str) -> bool:
         if self._strategy == "fixed":
             return self._allow_fixed(client_id)
-        else:
+        elif self._strategy == "sliding_log":
             return self._allow_sliding(client_id)
+        else:
+            return self._allow_bucket(client_id)
+    
+    def _allow_bucket(self, client_id: str) -> bool:
+        now = time.time()
+        if client_id not in self._buckets:
+            self._buckets[client_id] = [self._bucket_capacity, now]
+        token, last_refill = self._buckets[client_id]
+        token += (now - last_refill) * self._refill_rate
+        self._buckets[client_id] = [min(self._bucket_capacity, token), now]
+
+        if self._buckets[client_id][0] < 1:
+            return False
+        
+        self._buckets[client_id][0] -= 1
+        return True
     
     def _allow_sliding(self, client_id: str) -> bool:
         now = time.time()
@@ -44,4 +64,3 @@ class RateLimiter:
         
         self._counter[client_id] += 1
         return True
-    
