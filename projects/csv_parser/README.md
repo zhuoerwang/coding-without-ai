@@ -1,28 +1,9 @@
 # Project 8: CSV Parser + Streaming Aggregation
 
-## Interview Context
-
-**Format**: Live coding round, ~45-60 min. You'll be given a CSV file and asked to manipulate data. Screen-shared, no AI tools.
-
-**What they're evaluating** (from the prep hints):
-- Reasoning over typing speed — clarify ambiguous requirements, propose concrete assumptions, justify them
+**Key Points**:
 - State machine design with clear transitions and invariants
 - Streaming/windowed aggregation comfort
 - Handling dirty/malformed data gracefully
-
-**Likely flow**:
-1. Parse a CSV file (state machine) — **~15-20 min, core**
-2. Stream rows + do something with the data — **~10-15 min, core**
-3. Windowed aggregation over the stream — **~10-15 min, stretch**
-4. Group-by / late data — **discussion only, unlikely to code**
-
-**Interview habits to practice**:
-- Before coding: "Let me clarify a few things..." — ask about edge cases
-- State assumptions out loud: "I'll assume the file fits the RFC 4180 CSV spec"
-- Narrate your state machine transitions as you write them
-- When stuck, say what you're thinking, not just silence
-
----
 
 ## Level 1: CSV Parser State Machine
 
@@ -34,12 +15,6 @@ class CSVParser:
     parse_row(line: str) -> list[str]              # parse a single CSV line into fields
     parse(text: str) -> list[list[str]]            # parse multi-line CSV text
 ```
-
-**Clarification questions to ask the interviewer:**
-- Should I handle newlines inside quoted fields? (likely yes)
-- How should I handle malformed input — e.g., unclosed quotes? (raise error vs best-effort)
-- Is whitespace around delimiters significant? (usually yes — preserve it)
-- Are we following RFC 4180, or a custom dialect?
 
 **Assumptions to state:**
 - Escaped quotes use the doubled-quote convention: `""` inside a quoted field
