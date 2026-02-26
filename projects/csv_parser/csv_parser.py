@@ -81,6 +81,16 @@ class CSVParser:
 
         return res
 
+    def is_complete_row(self, text: str) -> bool:
+        """ Check if the input text is a complete row """
+        curr_state = States.FIELD_START
+        for char in text:
+            if char in self.transition_rules[curr_state]:
+                curr_state = self.transition_rules[curr_state][char]
+            else:
+                curr_state = self.transition_rules[curr_state]["OTHERS"]
+        
+        return curr_state != States.QUOTED
 
 class CSVStream:
     def __init__(self, parser: CSVParser, header: bool = True) -> None:
@@ -99,17 +109,16 @@ class CSVStream:
     def iter_rows(self, source: Iterable[str]) -> Iterator[dict[str, str]] | Iterator[list]:
         # The first row is a header, and return a iterator of a dict
         head = self.parser.parse_row(next(source)) if self.header else []
-        row_list, count_quotes = [], 0
+        row_list = []
 
         # Process the rest of the content
         for line in source:
             row_list.append(line)
-            count_quotes += line.count(self.parser.quotechar)
+            row = '\n'.join(row_list)
             # edge case, quotecahr expand to multiple lines
-            if count_quotes % 2 == 1:
+            if not self.parser.is_complete_row(row):
                 continue
 
-            row = '\n'.join(row_list)
             row_content = {} if self.header else []
             for i, item in enumerate(self.parser.parse_row(row)):
                 value = self._value(item)
@@ -129,7 +138,7 @@ class CSVStream:
                     row_content.append("")
             
             # reset the values
-            row_list, count_quotes = [], 0
+            row_list = []
             # Yield result
             yield row_content
 
