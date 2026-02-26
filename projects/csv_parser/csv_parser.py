@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Iterable, Iterator
 
 class States(Enum):
     FIELD_START = "FIELD_START"
@@ -8,6 +9,8 @@ class States(Enum):
 
 class CSVParser:
     def __init__(self, delimiter: str = ",", quotechar: str='"') -> None:
+        self.quotechar = quotechar
+        self.delimiter = delimiter
         self.transition_rules = {
             States.FIELD_START: {
                 quotechar: States.QUOTED,
@@ -25,7 +28,7 @@ class CSVParser:
             States.QUOTE_IN_QUOTED: {
                 quotechar: States.QUOTED, # escape quotes
                 delimiter: States.FIELD_START,
-                "OTHERS": States.UNQUOTED
+                "OTHERS": States.QUOTE_IN_QUOTED
             }
         }
 
@@ -80,8 +83,59 @@ class CSVParser:
 
 
 class CSVStream:
-    def __init__(self):
-        pass
+    def __init__(self, parser: CSVParser, header: bool = True) -> None:
+        self.header = header
+        self.parser = parser
+
+    def _value(self, item: str) -> str | int | float:
+        try:
+            return int(item)
+        except ValueError:
+            try:
+                return float(item)
+            except ValueError:
+                return item
+
+    def iter_rows(self, source: Iterable[str]) -> Iterator[dict[str, str]] | Iterator[list]:
+        # The first row is a header, and return a iterator of a dict
+        head = self.parser.parse_row(next(source)) if self.header else []
+        row_list, count_quotes = [], 0
+
+        # Process the rest of the content
+        for line in source:
+            row_list.append(line)
+            count_quotes += line.count(self.parser.quotechar)
+            # edge case, quotecahr expand to multiple lines
+            if count_quotes % 2 == 1:
+                continue
+
+            row = '\n'.join(row_list)
+            row_content = {} if self.header else []
+            for i, item in enumerate(self.parser.parse_row(row)):
+                value = self._value(item)
+                if self.header:
+                    # Handle edge case: more cols than head
+                    if i >= len(head):
+                        continue
+                    row_content[head[i]] = value
+                else:
+                    row_content.append(value)
+            
+            # Edge case: add missing field, append ""
+            for j in range(i+1, len(head)):
+                if self.header:
+                    row_content[head[j]] = ""
+                else:
+                    row_content.append("")
+            
+            # reset the values
+            row_list, count_quotes = [], 0
+            # Yield result
+            yield row_content
+
+    def iter_rows_from_file(self, filepath: str) -> Iterator[dict[str, str]]| Iterator[list]:
+        with open(filepath, "r") as fp:
+            yield from self.iter_rows(fp)
 
 
 class WindowAggregator:

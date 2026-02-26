@@ -77,12 +77,6 @@ class CSVStream:
     iter_rows_from_file(filepath: str) -> Iterator[dict[str, str]]
 ```
 
-**Clarification questions to ask:**
-- How large is the file? (motivates streaming vs load-all)
-- Should I auto-detect types (int/float) or keep everything as strings?
-- What if a row has more/fewer columns than the header?
-- Is the data clean, or should I expect malformed rows?
-
 **Assumptions to state:**
 - File could be large, so we stream line-by-line (generator-based, O(1) memory)
 - Mismatched columns: extra fields truncated, missing fields filled with `""`
@@ -100,7 +94,6 @@ class CSVStream:
 **Key design point** — handling multi-line quoted fields in a streaming context:
 - You can't just `for line in source` — a single CSV row may span multiple lines
 - Need a line accumulator: if a line has an unclosed quote, keep reading until the quote closes
-- This is a common follow-up question
 
 **Test Cases:**
 ```python

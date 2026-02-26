@@ -159,7 +159,7 @@ class TestLevel2:
         stream = CSVStream(parser)
         lines = ["a,b", "1,2,3"]  # 3 fields but only 2 headers
         rows = list(stream.iter_rows(iter(lines)))
-        assert rows == [{"a": "1", "b": "2"}]  # extra field truncated
+        assert rows == [{"a": 1, "b": 2}]  # extra field truncated
 
     def test_mismatched_columns_missing(self):
         """Missing fields are empty string."""
@@ -167,7 +167,7 @@ class TestLevel2:
         stream = CSVStream(parser)
         lines = ["a,b,c", "1,2"]  # only 2 fields but 3 headers
         rows = list(stream.iter_rows(iter(lines)))
-        assert rows == [{"a": "1", "b": "2", "c": ""}]
+        assert rows == [{"a": 1, "b": 2, "c": ""}]
 
     def test_quoted_newline_in_stream(self):
         """Rows spanning multiple lines due to quoted newlines."""
