@@ -1,9 +1,6 @@
-# Project 8: CSV Parser + Streaming Aggregation
+# Project: CSV Parser + Streaming Aggregation
 
-**Key Points**:
-- State machine design with clear transitions and invariants
-- Streaming/windowed aggregation comfort
-- Handling dirty/malformed data gracefully
+**Core skills tested**: State machine design, streaming/iterator patterns, windowed aggregation
 
 ## Level 1: CSV Parser State Machine
 
@@ -11,47 +8,43 @@
 
 ```
 class CSVParser:
-    __init__(delimiter: str = ",", quotechar: str = '"') -> None
-    parse_row(line: str) -> list[str]              # parse a single CSV line into fields
-    parse(text: str) -> list[list[str]]            # parse multi-line CSV text
+    __init__(delimiter: str = ",", quote: str = '"') -> None
+    parse_row(row: str) -> list                    # parse a single CSV row into fields
+    parse(text: list[str]) -> list[list]           # parse all rows (load all into memory)
 ```
 
-**Assumptions to state:**
+**Assumptions:**
+- No newlines inside quoted fields (each line = one row)
 - Escaped quotes use the doubled-quote convention: `""` inside a quoted field
 - Whitespace is preserved, not trimmed
 - Empty fields are valid: `a,,c` -> `["a", "", "c"]`
+- Type coercion: attempt `int`, then `float`, then keep as `str`
 
 **Requirements:**
 - Handle basic comma-separated values: `a,b,c` -> `["a", "b", "c"]`
 - Handle quoted fields: `"hello, world",b` -> `["hello, world", "b"]`
 - Handle escaped quotes (doubled): `"say ""hi""",b` -> `['say "hi"', "b"]`
-- Handle newlines inside quoted fields: `"line1\nline2",b` -> `["line1\nline2", "b"]`
 - Handle empty fields: `a,,c` -> `["a", "", "c"]`
 - Handle trailing delimiter: `a,b,` -> `["a", "b", ""]`
-- Whitespace is preserved (not trimmed)
-- Implement as a **state machine** with explicit states: `FIELD_START`, `UNQUOTED`, `QUOTED`, `QUOTE_IN_QUOTED`
+- Type coercion on each field (int > float > str)
+- Implement as a **state machine** with explicit states: `START`, `QUOTE`, `UNQUOTE`, `QUOTE_IN_QUOTE`
 
-**State transitions (narrate these as you code):**
+**State transitions:**
 ```
-FIELD_START --["]-->   QUOTED
-FIELD_START --[,]-->   FIELD_START (emit empty field)
-FIELD_START --[char]--> UNQUOTED
+START --[quote]-->     QUOTE
+START --[delimiter]--> START (emit empty field)
+START --[char]-->      UNQUOTE
 
-UNQUOTED --[,]--> FIELD_START (emit field)
-UNQUOTED --[char]--> UNQUOTED
+UNQUOTE --[delimiter]--> START (emit field)
+UNQUOTE --[char]-->      UNQUOTE
 
-QUOTED --["]--> QUOTE_IN_QUOTED
-QUOTED --[char]--> QUOTED
+QUOTE --[quote]--> QUOTE_IN_QUOTE
+QUOTE --[char]-->  QUOTE
 
-QUOTE_IN_QUOTED --["]--> QUOTED (escaped quote)
-QUOTE_IN_QUOTED --[,]--> FIELD_START (emit field)
-QUOTE_IN_QUOTED --[EOF]--> (emit field)
+QUOTE_IN_QUOTE --[quote]-->     QUOTE (escaped quote)
+QUOTE_IN_QUOTE --[delimiter]--> START (emit field)
+QUOTE_IN_QUOTE --[EOF]-->       (emit field)
 ```
-
-**Invariants to mention:**
-- Every state transition either appends to the current field or emits it
-- At EOF, the current field is always emitted (handles trailing content)
-- The state machine is O(n) single-pass — no backtracking
 
 **Test Cases:**
 ```python
@@ -62,139 +55,128 @@ assert parser.parse_row('"say ""hi""",b') == ['say "hi"', 'b']
 assert parser.parse_row('a,,c') == ['a', '', 'c']
 assert parser.parse_row('a,b,') == ['a', 'b', '']
 assert parser.parse_row('') == ['']
+assert parser.parse_row('10,3.14,hello') == [10, 3.14, 'hello']
 ```
 
 ---
 
-## Level 2: Streaming Row Iterator
+## Level 2: Streaming Iterator
 
-**Extend with a streaming interface:**
+**Extend `CSVParser` with a streaming interface:**
 
 ```
-class CSVStream:
-    __init__(parser: CSVParser, header: bool = True) -> None
-    iter_rows(source: Iterable[str]) -> Iterator[dict[str, str]]
-    iter_rows_from_file(filepath: str) -> Iterator[dict[str, str]]
+class CSVParser:
+    ...
+    iter(source: Iterable[str]) -> Iterator[list]          # stream parsed rows
+    iter_from_file(filepath: str) -> Iterator[list]        # stream from file
 ```
 
-**Assumptions to state:**
+**Clarification questions to ask:**
+- How large is the file? (motivates streaming vs load-all)
+
+**Assumptions:**
 - File could be large, so we stream line-by-line (generator-based, O(1) memory)
-- Mismatched columns: extra fields truncated, missing fields filled with `""`
-- Type coercion: attempt `int`, then `float`, then keep as `str`
+- Each line is one complete CSV row (no newlines in cells)
 
 **Requirements:**
-- `source` is any iterable of strings (lines), enabling streaming from files/network
-- If `header=True`, first row is used as column names; yields `dict` per row
-- If `header=False`, yields `list` per row
-- **Generator-based**: never loads full file into memory
-- Handle rows that span multiple lines (quoted newlines)
-- Handle mismatched column count: extra fields are truncated, missing fields are empty string
-- Type coercion: auto-detect int, float, or keep as string
+- `iter()` takes any iterable of strings and yields parsed rows using `yield`
+- Generator-based: never loads full file into memory
+- `iter_from_file()` opens a file and delegates to `iter()` using `yield from`
+- Rows are stripped of trailing newlines before parsing
 
-**Key design point** — handling multi-line quoted fields in a streaming context:
-- You can't just `for line in source` — a single CSV row may span multiple lines
-- Need a line accumulator: if a line has an unclosed quote, keep reading until the quote closes
+**Key design point:**
+- `parse()` loads all rows into memory — fine for small files
+- `iter()` yields one row at a time — O(1) memory for any file size
+- Interview progression: start with `parse()`, refactor to `iter()` when asked about large files
 
 **Test Cases:**
 ```python
 parser = CSVParser()
-stream = CSVStream(parser)
-lines = ["name,age,city", "Alice,30,NYC", "Bob,25,LA"]
-rows = list(stream.iter_rows(iter(lines)))
-assert rows == [
-    {"name": "Alice", "age": 30, "city": "NYC"},
-    {"name": "Bob", "age": 25, "city": "LA"},
-]
 
-# Mismatched columns
-lines2 = ["a,b", "1,2,3", "4"]
-rows2 = list(stream.iter_rows(iter(lines2)))
-assert rows2 == [{"a": 1, "b": 2}, {"a": 4, "b": ""}]
+# Streaming from list
+rows = list(parser.iter(iter(["a,b,c", "1,2,3"])))
+assert rows == [["a", "b", "c"], [1, 2, 3]]
+
+# Generator-based (doesn't load all at once)
+def infinite_lines():
+    i = 0
+    while True:
+        yield f"{i},{i*10}"
+        i += 1
+
+gen = parser.iter(infinite_lines())
+assert next(gen) == [0, 0]
+assert next(gen) == [1, 10]
 ```
 
 ---
 
 ## Level 3: Windowed Aggregation
 
-**Implement windowed aggregation over streaming rows:**
+**Implement tumbling window aggregation over streaming rows:**
 
 ```
 class WindowAggregator:
-    __init__(window_type: str, window_size: float, time_column: str) -> None
-    add_row(row: dict) -> list[dict] | None   # returns completed window results
-    flush() -> list[dict]                      # flush remaining incomplete window
-```
-**Assumptions to state:**
-- Timestamps arrive in order (for now — Level 4 relaxes this)
-- Window boundaries are epoch-aligned: `[0, size), [size, 2*size), ...`
-- Aggregate all numeric columns automatically
-
-**Requirements:**
-- `window_type`: `"tumbling"` or `"sliding"`
-- `window_size`: window duration in seconds
-- `time_column`: name of the column containing timestamps (epoch float or ISO string)
-- **Tumbling window**: non-overlapping fixed windows
-  - Window boundaries: `[0, size), [size, 2*size), ...`
-  - When a row arrives beyond the current window, emit the completed window
-- **Sliding window**: window slides with each new row
-  - For each new row, include all rows within `window_size` seconds before it
-  - Emit aggregate for each row
-- Aggregation functions: `count`, `sum`, `avg`, `min`, `max` per numeric column
-- `add_row()` returns completed window result when a window closes, `None` otherwise
-
-**Test Cases:**
-```python
-agg = WindowAggregator(window_type="tumbling", window_size=10, time_column="ts")
-result = agg.add_row({"ts": 1.0, "value": 10})
-assert result is None  # window not complete
-result = agg.add_row({"ts": 5.0, "value": 20})
-assert result is None  # still in [0, 10) window
-result = agg.add_row({"ts": 12.0, "value": 30})
-# Window [0, 10) is complete
-assert result[0]["count"] == 2
-assert result[0]["sum_value"] == 30
-assert result[0]["avg_value"] == 15.0
-```
-
----
-
-## Level 4: Multi-Key Group-By + Late-Arriving Data
-
-*Unlikely to code in interview — good for discussion / "how would you extend this?"*
-
-**Extend `WindowAggregator`:**
-
-```
-__init__(..., group_by: list[str] | None = None, allowed_lateness: float = 0) -> None
+    __init__(window_size: float, ts_index: int, val_index: int) -> None
+    add_row(row: list) -> dict | None       # returns result when window completes
+    flush() -> dict | None                  # flush remaining incomplete window
 ```
 
 **Clarification questions to ask:**
-- How late can data arrive? Is there a watermark?
-- When a late row updates a closed window, should I re-emit the updated result?
-- How do I signal that a row was dropped?
+- Are timestamps guaranteed to be sorted / monotonically increasing?
+- What aggregations do you want? (count, sum, avg, min, max)
+- Are window boundaries aligned to epoch (0, size, 2*size...) or relative to first row?
+
+**Assumptions:**
+- Timestamps arrive in sorted order
+- Window boundaries are epoch-aligned: `[0, size), [size, 2*size), ...`
+- Aggregate a single numeric column specified by index
 
 **Requirements:**
-- `group_by`: columns to group by before aggregating (e.g. `["city"]`)
-  - Each group maintains its own window state
-  - Results include the group key values
-- `allowed_lateness`: seconds of slack for late-arriving data
-  - Rows arriving within `allowed_lateness` after window close are still included
-  - Windows are kept open for `allowed_lateness` duration after they would normally close
-  - Rows arriving after the lateness threshold are dropped (return a "dropped" indicator)
-- Handle out-of-order data within allowed lateness
-- Multiple groups should emit independently
+- `window_size`: window duration in seconds
+- `ts_index`: column index for timestamp field
+- `val_index`: column index for numeric value to aggregate
+- **Tumbling window**: non-overlapping fixed windows
+  - When a row arrives beyond the current window, emit the completed window
+  - The triggering row belongs to the next window
+- `add_row()` returns a dict when a window closes, `None` otherwise
+- `flush()` emits whatever is accumulated (for end-of-data), `None` if empty
+- Result dict contains: `window_start`, `window_end`, `count`, `sum`, `avg`, `min`, `max`
+
+**End-to-end pipeline:**
+```
+CSV File -> parser.iter_from_file() -> agg.add_row() -> windowed results
+```
 
 **Test Cases:**
 ```python
-agg = WindowAggregator(
-    window_type="tumbling", window_size=10, time_column="ts",
-    group_by=["city"], allowed_lateness=5.0
-)
-agg.add_row({"ts": 1.0, "city": "NYC", "value": 10})
-agg.add_row({"ts": 2.0, "city": "LA", "value": 20})
-agg.add_row({"ts": 12.0, "city": "NYC", "value": 30})  # triggers NYC window [0,10)
-# But LA window [0,10) still open due to lateness allowance
-agg.add_row({"ts": 8.0, "city": "LA", "value": 25})  # late but within lateness
-result = agg.add_row({"ts": 16.0, "city": "LA", "value": 40})
-# LA window [0,10) now emitted with both rows
+# Basic tumbling window
+agg = WindowAggregator(window_size=10, ts_index=1, val_index=0)
+assert agg.add_row([10, 1.0]) is None
+assert agg.add_row([20, 5.0]) is None
+result = agg.add_row([30, 12.0])
+# Window [0, 10) complete
+assert result["count"] == 2
+assert result["sum"] == 30
+assert result["avg"] == 15.0
+
+# Flush incomplete window
+agg2 = WindowAggregator(window_size=10, ts_index=1, val_index=0)
+agg2.add_row([10, 1.0])
+agg2.add_row([20, 5.0])
+result = agg2.flush()
+assert result["count"] == 2
+
+# Empty flush
+agg3 = WindowAggregator(window_size=10, ts_index=1, val_index=0)
+assert agg3.flush() is None
+
+# End-to-end: stream CSV -> aggregate
+parser = CSVParser()
+agg4 = WindowAggregator(window_size=10, ts_index=3, val_index=2)
+for row in parser.iter_from_file("a.csv"):
+    result = agg4.add_row(row)
+    if result:
+        print(result)
+remaining = agg4.flush()
 ```
