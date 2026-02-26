@@ -124,13 +124,6 @@ class WindowAggregator:
     add_row(row: dict) -> list[dict] | None   # returns completed window results
     flush() -> list[dict]                      # flush remaining incomplete window
 ```
-
-**Clarification questions to ask:**
-- Are timestamps guaranteed to be sorted / monotonically increasing?
-- What aggregations do you want? (count, sum, avg, min, max?)
-- For tumbling windows — are boundaries aligned to epoch (0, size, 2*size...) or relative to first row?
-- Should I handle the case where a single row triggers multiple window closes?
-
 **Assumptions to state:**
 - Timestamps arrive in order (for now — Level 4 relaxes this)
 - Window boundaries are epoch-aligned: `[0, size), [size, 2*size), ...`

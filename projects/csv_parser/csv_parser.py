@@ -39,8 +39,8 @@ class CSVParser:
         field_content = []
         for char in line:
             if char in self.transition_rules[curr_state]:
+                # escape the quote char
                 if curr_state == States.QUOTE_IN_QUOTED and char == self.quotechar:
-                    # escape the quote char
                     field_content.append(char)
                 curr_state = self.transition_rules[curr_state][char]
             else:
@@ -148,5 +148,61 @@ class CSVStream:
 
 
 class WindowAggregator:
-    def __init__(self):
-        pass
+    def __init__(self, window_type: str, window_size: float, time_column: str) -> None:
+        self.window_type = window_type
+        self.window_size = window_size
+        self.time_column = time_column
+        self._result = {}
+        self._window_start = 0.0
+        self._rows = []  # stores all rows for sliding window
+
+    def _aggregate(self, rows: list[dict]) -> dict:
+        """Compute aggregation over a list of rows."""
+        result = {"count": len(rows)}
+        for row in rows:
+            for k, v in row.items():
+                if k == self.time_column:
+                    continue
+                if not isinstance(v, (int, float)):
+                    continue
+                sum_key = "sum_" + k
+                max_key = "max_" + k
+                min_key = "min_" + k
+                result[sum_key] = result.get(sum_key, 0) + v
+                result[max_key] = max(result.get(max_key, float('-inf')), v)
+                result[min_key] = min(result.get(min_key, float('inf')), v)
+        # compute averages after all sums are done
+        for key in list(result.keys()):
+            if key.startswith("sum_"):
+                col = key[4:]
+                result["avg_" + col] = result[key] / result["count"]
+        return result
+
+    def add_row(self, row: dict) -> list[dict] | dict | None:
+        ts = row[self.time_column]
+
+        if self.window_type == "sliding":
+            self._rows.append(row)
+            # Filter to rows within [ts - window_size, ts]
+            self._rows = [r for r in self._rows if r[self.time_column] >= ts - self.window_size]
+            return self._aggregate(self._rows)
+
+        # Tumbling window
+        window_end = self._window_start + self.window_size
+        completed = None
+
+        if ts >= window_end:
+            completed = self.flush()
+            self._window_start = (ts // self.window_size) * self.window_size
+
+        self._rows.append(row)
+        self._result = self._aggregate(self._rows)
+        return completed if completed else None
+
+    def flush(self) -> list[dict]:
+        if not self._rows:
+            return []
+        result = [self._aggregate(self._rows)]
+        self._rows = []
+        self._result = {}
+        return result
