@@ -120,3 +120,10 @@ class WindowAggregator:
         res = self.aggregate_result.copy()
         self.aggregate_result = {}
         return res if res != {} else None
+
+parser = CSVParser()
+agg = WindowAggregator(window_size=10, ts_index=3, val_index=2)
+for row in parser.iter_from_file('example.csv'):
+    result = agg.add_row(row)
+    if result:
+        print(result)
