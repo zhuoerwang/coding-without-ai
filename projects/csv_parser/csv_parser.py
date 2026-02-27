@@ -84,12 +84,39 @@ class CSVParser:
         for row in source:
             yield self.parse_row(row.strip())
 
-
     def iter_from_file(self, filepath: str) -> Iterator[list]:
         with open(filepath, "r") as fp:
             yield from self.iter(fp)
-        
+
 
 class WindowAggregator:
-    def __init__(self):
-        pass
+    def __init__(self, window_size: float, ts_index: int, val_index: int) -> None:
+        self.window_size = window_size
+        self.ts_index = ts_index
+        self.val_index = val_index
+        self.aggregate_result = {}
+
+    def _aggregate(self, row: list) -> None:
+        ts, val = row[self.ts_index], row[self.val_index]
+        self.aggregate_result["count"] = self.aggregate_result.get("count", 0) + 1
+        self.aggregate_result["sum"] = self.aggregate_result.get("sum", 0) + val
+        self.aggregate_result["avg"] = self.aggregate_result["sum"] / self.aggregate_result["count"]
+        self.aggregate_result["max"] = max(self.aggregate_result.get("max", float('-inf')), val)
+        self.aggregate_result["min"] = min(self.aggregate_result.get("min", float('inf')), val)
+        self.aggregate_result["window_start"] = ts // self.window_size * self.window_size
+        self.aggregate_result["window_end"] = self.aggregate_result["window_start"] + self.window_size
+    
+    def add_row(self, row: list) -> dict | None:
+        """ returns result when window completes """
+        completed = None
+        if row[self.ts_index] >= self.aggregate_result.get("window_end", float('inf')):
+            completed = self.flush()
+        
+        self._aggregate(row)
+
+        return completed
+
+    def flush(self) -> dict | None:
+        res = self.aggregate_result.copy()
+        self.aggregate_result = {}
+        return res if res != {} else None

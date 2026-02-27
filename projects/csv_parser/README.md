@@ -70,10 +70,6 @@ class CSVParser:
     iter(source: Iterable[str]) -> Iterator[list]          # stream parsed rows
     iter_from_file(filepath: str) -> Iterator[list]        # stream from file
 ```
-
-**Clarification questions to ask:**
-- How large is the file? (motivates streaming vs load-all)
-
 **Assumptions:**
 - File could be large, so we stream line-by-line (generator-based, O(1) memory)
 - Each line is one complete CSV row (no newlines in cells)
@@ -122,11 +118,6 @@ class WindowAggregator:
     flush() -> dict | None                  # flush remaining incomplete window
 ```
 
-**Clarification questions to ask:**
-- Are timestamps guaranteed to be sorted / monotonically increasing?
-- What aggregations do you want? (count, sum, avg, min, max)
-- Are window boundaries aligned to epoch (0, size, 2*size...) or relative to first row?
-
 **Assumptions:**
 - Timestamps arrive in sorted order
 - Window boundaries are epoch-aligned: `[0, size), [size, 2*size), ...`
@@ -174,7 +165,7 @@ assert agg3.flush() is None
 # End-to-end: stream CSV -> aggregate
 parser = CSVParser()
 agg4 = WindowAggregator(window_size=10, ts_index=3, val_index=2)
-for row in parser.iter_from_file("a.csv"):
+for row in parser.iter_from_file("example.csv"):
     result = agg4.add_row(row)
     if result:
         print(result)
